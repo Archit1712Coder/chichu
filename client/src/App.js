@@ -1,17 +1,30 @@
 import React, { useState, useEffect } from "react";
 import {
-  Container, Box, Button, TextField, CircularProgress, Table, TableHead,
-  TableRow, TableCell, TableBody, Typography, Paper, Snackbar, IconButton,
-  TableSortLabel, Modal, TablePagination
+  Container,
+  Box,
+  Button,
+  TextField,
+  CircularProgress,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  Typography,
+  Paper,
+  Snackbar,
+  IconButton,
+  TablePagination,
+  TableContainer,
+  Grid,
 } from "@mui/material";
 import { styled } from "@mui/system";
-import CloseIcon from '@mui/icons-material/Close';
+import CloseIcon from "@mui/icons-material/Close";
 import "./App.css";
 
-
 const StyledTableCell = styled(TableCell)(({ theme }) => ({
-  fontWeight: 'bold',
-  backgroundColor: '#f5f5f5',
+  fontWeight: "bold",
+  backgroundColor: "#f5f5f5",
 }));
 
 function App() {
@@ -22,12 +35,8 @@ function App() {
   const [uploading, setUploading] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
-  const [sortOrder, setSortOrder] = useState("asc");
-  const [sortBy, setSortBy] = useState("clientname");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedClient, setSelectedClient] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -36,11 +45,18 @@ function App() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:3000/data?search=${search}`);
+      const encodedSearch = encodeURIComponent(search.trim());
+      const response = await fetch(
+        `http://localhost:3000/api/files/data?search=${encodedSearch}`,
+      );
+
       if (!response.ok) {
         throw new Error("Network response was not ok " + response.statusText);
       }
+
       const result = await response.json();
+
+      console.log("Fetched data:", result); // Log the fetched data for debugging
       setData(result);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -76,20 +92,6 @@ function App() {
     setSnackbarOpen(true);
   };
 
-  const handleSortRequest = (property) => {
-    const isAsc = sortBy === property && sortOrder === "asc";
-    setSortOrder(isAsc ? "desc" : "asc");
-    setSortBy(property);
-  };
-
-  const sortedData = (data) => {
-    return [...data].sort((a, b) => {
-      if (a[sortBy] < b[sortBy]) return sortOrder === "asc" ? -1 : 1;
-      if (a[sortBy] > b[sortBy]) return sortOrder === "asc" ? 1 : -1;
-      return 0;
-    });
-  };
-
   const handlePageChange = (event, newPage) => {
     setPage(newPage);
   };
@@ -97,15 +99,6 @@ function App() {
   const handleRowsPerPageChange = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
-  };
-
-  const handleClientClick = (client) => {
-    setSelectedClient(client);
-    setModalOpen(true);
-  };
-
-  const handleModalClose = () => {
-    setModalOpen(false);
   };
 
   return (
@@ -125,7 +118,12 @@ function App() {
             id="file-upload"
           />
           <label htmlFor="file-upload">
-            <Button variant="contained" component="span" color="primary" disabled={uploading}>
+            <Button
+              variant="contained"
+              component="span"
+              color="primary"
+              disabled={uploading}
+            >
               {uploading ? "Uploading..." : "Choose File"}
             </Button>
           </label>
@@ -143,7 +141,7 @@ function App() {
         {/* Search Bar */}
         <Box display="flex" justifyContent="center" mb={4}>
           <TextField
-            label="Search by Client Name"
+            label="Search by Filename"
             variant="outlined"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -159,55 +157,73 @@ function App() {
           </Box>
         ) : (
           <Paper elevation={3}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <StyledTableCell>
-                    <TableSortLabel
-                      active={sortBy === "SNo"}
-                      direction={sortOrder}
-                      onClick={() => handleSortRequest("SNo")}
-                    >
-                      SNo
-                    </TableSortLabel>
-                  </StyledTableCell>
-                  <StyledTableCell>Material</StyledTableCell>
-                  <StyledTableCell>Unit</StyledTableCell>
-                  <StyledTableCell>Quantity</StyledTableCell>
-                  <StyledTableCell>Rate</StyledTableCell>
-                  <StyledTableCell>Amount</StyledTableCell>
-                  <StyledTableCell>
-                    <TableSortLabel
-                      active={sortBy === "clientname"}
-                      direction={sortOrder}
-                      onClick={() => handleSortRequest("clientname")}
-                    >
-                      Client Name
-                    </TableSortLabel>
-                  </StyledTableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {sortedData(data)
-                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                  .map((item, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{item.SNo}</TableCell>
-                      <TableCell>{item.Material}</TableCell>
-                      <TableCell>{item.Unit}</TableCell>
-                      <TableCell>{item.Quantity}</TableCell>
-                      <TableCell>{item.Rate}</TableCell>
-                      <TableCell>{item.Amount}</TableCell>
-                      <TableCell
-                        style={{ cursor: "pointer", color: "blue" }}
-                        onClick={() => handleClientClick(item)}
-                      >
-                        {item.clientname}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-              </TableBody>
-            </Table>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <StyledTableCell>Filename</StyledTableCell>
+                    <StyledTableCell>Details</StyledTableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {data
+                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                    .map((fileItem, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{fileItem.filename}</TableCell>
+                        <TableCell>
+                          {fileItem.data.map((row, rowIndex) => (
+                            <Grid
+                              container
+                              spacing={2}
+                              key={rowIndex}
+                              style={{
+                                border: "1px solid #ddd",
+                                marginBottom: "10px",
+                                padding: "10px",
+                                borderRadius: "5px",
+                              }}
+                            >
+                              <Grid item xs={2}>
+                                <Typography variant="body1">
+                                  <strong>SNo:</strong> {row.SNo}
+                                </Typography>
+                              </Grid>
+                              <Grid item xs={2}>
+                                <Typography variant="body1">
+                                  <strong>Material:</strong> {row.Material}
+                                </Typography>
+                              </Grid>
+                              <Grid item xs={2}>
+                                <Typography variant="body1">
+                                  <strong>Unit:</strong>{" "}
+                                  {row.Unit ? row.Unit : "N/A"}
+                                </Typography>
+                              </Grid>
+
+                              <Grid item xs={2}>
+                                <Typography variant="body1">
+                                  <strong>Quantity:</strong> {row.Quantity}
+                                </Typography>
+                              </Grid>
+                              <Grid item xs={2}>
+                                <Typography variant="body1">
+                                  <strong>Rate:</strong> {row.Rate}
+                                </Typography>
+                              </Grid>
+                              <Grid item xs={2}>
+                                <Typography variant="body1">
+                                  <strong>Amount:</strong> {row.Amount}
+                                </Typography>
+                              </Grid>
+                            </Grid>
+                          ))}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
 
             {/* Pagination */}
             <TablePagination
@@ -229,40 +245,16 @@ function App() {
           onClose={() => setSnackbarOpen(false)}
           message={snackbarMessage}
           action={
-            <IconButton size="small" aria-label="close" color="inherit" onClick={() => setSnackbarOpen(false)}>
+            <IconButton
+              size="small"
+              aria-label="close"
+              color="inherit"
+              onClick={() => setSnackbarOpen(false)}
+            >
               <CloseIcon fontSize="small" />
             </IconButton>
           }
         />
-
-        {/* Modal for Client Details */}
-        {selectedClient && (
-          <Modal open={modalOpen} onClose={handleModalClose}>
-            <Box
-              display="flex"
-              justifyContent="center"
-              alignItems="center"
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                backgroundColor: "white",
-                padding: "20px",
-                borderRadius: "8px",
-                outline: "none",
-              }}
-            >
-              <Typography variant="h6">
-                Client: {selectedClient.clientname}
-              </Typography>
-              <Typography>Material: {selectedClient.Material}</Typography>
-              <Typography>Quantity: {selectedClient.Quantity}</Typography>
-              <Typography>Rate: {selectedClient.Rate}</Typography>
-              <Typography>Amount: {selectedClient.Amount}</Typography>
-            </Box>
-          </Modal>
-        )}
       </Box>
     </Container>
   );
