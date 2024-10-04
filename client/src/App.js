@@ -17,15 +17,13 @@ import {
   TablePagination,
   TableContainer,
   Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
-import { styled } from "@mui/system";
 import CloseIcon from "@mui/icons-material/Close";
 import "./App.css";
-
-const StyledTableCell = styled(TableCell)(({ theme }) => ({
-  fontWeight: "bold",
-  backgroundColor: "#f5f5f5",
-}));
 
 function App() {
   const [file, setFile] = useState(null);
@@ -37,6 +35,8 @@ function App() {
   const [snackbarMessage, setSnackbarMessage] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedRow, setSelectedRow] = useState(null); // For updating
 
   useEffect(() => {
     fetchData();
@@ -49,14 +49,10 @@ function App() {
       const response = await fetch(
         `http://localhost:3000/api/files/data?search=${encodedSearch}`,
       );
-
       if (!response.ok) {
         throw new Error("Network response was not ok " + response.statusText);
       }
-
       const result = await response.json();
-
-      console.log("Fetched data:", result); // Log the fetched data for debugging
       setData(result);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -64,9 +60,7 @@ function App() {
     setLoading(false);
   };
 
-  const handleFileChange = (e) => {
-    setFile(e.target.files[0]);
-  };
+  const handleFileChange = (e) => setFile(e.target.files[0]);
 
   const handleUpload = async () => {
     if (!file) {
@@ -76,9 +70,8 @@ function App() {
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
-
     try {
-      const response = await fetch("http://localhost:3000/upload", {
+      const response = await fetch("http://localhost:3000/api/files/upload", {
         method: "POST",
         body: formData,
       });
@@ -92,13 +85,58 @@ function App() {
     setSnackbarOpen(true);
   };
 
-  const handlePageChange = (event, newPage) => {
-    setPage(newPage);
+  const handleDelete = async (filename) => {
+    try {
+      await fetch(`http://localhost:3000/api/files/delete/${filename}`, {
+        method: "DELETE",
+      });
+      setSnackbarMessage("File deleted successfully!");
+      fetchData();
+    } catch (error) {
+      setSnackbarMessage("Error deleting file");
+    }
+    setSnackbarOpen(true);
   };
 
-  const handleRowsPerPageChange = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
+  const handleUpdate = (file, row) => {
+    setSelectedRow({ ...row, filename: file.filename });
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveUpdate = async () => {
+    const { filename, SNo, ...updatedRow } = selectedRow;
+    try {
+      await fetch(`http://localhost:3000/api/files/update/${filename}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ SNo, updatedRow }),
+      });
+      setSnackbarMessage("Row updated successfully!");
+      setEditDialogOpen(false);
+      fetchData();
+    } catch (error) {
+      setSnackbarMessage("Error updating row");
+    }
+    setSnackbarOpen(true);
+  };
+
+  const handleChangeRow = (field, value) => {
+    setSelectedRow((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const formatDateTime = (timestamp) => {
+    if (!timestamp || isNaN(new Date(timestamp).getTime())) {
+      return "Unknown date";
+    }
+    const date = new Date(timestamp);
+    return new Intl.DateTimeFormat("en-US", {
+      year: "numeric",
+      month: "2-digit", // Compact month format
+      day: "2-digit", // Compact day format
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true, // AM/PM format
+    }).format(date);
   };
 
   return (
@@ -161,79 +199,110 @@ function App() {
               <Table>
                 <TableHead>
                   <TableRow>
-                    <StyledTableCell>Filename</StyledTableCell>
-                    <StyledTableCell>Details</StyledTableCell>
+                    <TableCell>Filename</TableCell>
+                    <TableCell>Date Uploaded</TableCell>
+                    <TableCell>Details</TableCell>
+                    <TableCell>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {data
-                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                    .map((fileItem, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{fileItem.filename}</TableCell>
-                        <TableCell>
-                          {fileItem.data.map((row, rowIndex) => (
-                            <Grid
-                              container
-                              spacing={2}
-                              key={rowIndex}
-                              style={{
-                                border: "1px solid #ddd",
-                                marginBottom: "10px",
-                                padding: "10px",
-                                borderRadius: "5px",
-                              }}
-                            >
-                              <Grid item xs={2}>
-                                <Typography variant="body1">
-                                  <strong>SNo:</strong> {row.SNo}
-                                </Typography>
-                              </Grid>
-                              <Grid item xs={2}>
-                                <Typography variant="body1">
-                                  <strong>Material:</strong> {row.Material}
-                                </Typography>
-                              </Grid>
-                              <Grid item xs={2}>
-                                <Typography variant="body1">
-                                  <strong>Unit:</strong>{" "}
-                                  {row.Unit ? row.Unit : "N/A"}
-                                </Typography>
-                              </Grid>
+                  {data.length === 0 ? (
+                    <Typography>No data available</Typography>
+                  ) : (
+                    data
+                      .slice(
+                        page * rowsPerPage,
+                        page * rowsPerPage + rowsPerPage,
+                      )
+                      .map((file, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{file.filename}</TableCell>
+                          <TableCell
+                            style={{ fontSize: "0.85rem", padding: "6px" }}
+                          >
+                            {formatDateTime(file.timestamp)}
+                          </TableCell>
 
-                              <Grid item xs={2}>
-                                <Typography variant="body1">
-                                  <strong>Quantity:</strong> {row.Quantity}
-                                </Typography>
+                          <TableCell>
+                            {file.data.map((row, rowIndex) => (
+                              <Grid
+                                container
+                                spacing={2}
+                                key={rowIndex}
+                                style={{
+                                  border: "1px solid #ddd",
+                                  marginBottom: "10px",
+                                  padding: "10px",
+                                  borderRadius: "5px",
+                                }}
+                              >
+                                <Grid item xs={2}>
+                                  <Typography variant="body1">
+                                    <strong>SNo:</strong> {row.SNo}
+                                  </Typography>
+                                </Grid>
+                                <Grid item xs={2}>
+                                  <Typography variant="body1">
+                                    <strong>Material:</strong> {row.Material}
+                                  </Typography>
+                                </Grid>
+                                <Grid item xs={2}>
+                                  <Typography variant="body1">
+                                    <strong>Unit:</strong> {row.Unit}
+                                  </Typography>
+                                </Grid>
+                                <Grid item xs={2}>
+                                  <Typography variant="body1">
+                                    <strong>Quantity:</strong> {row.Quantity}
+                                  </Typography>
+                                </Grid>
+                                <Grid item xs={2}>
+                                  <Typography variant="body1">
+                                    <strong>Rate:</strong> {row.Rate}
+                                  </Typography>
+                                </Grid>
+                                <Grid item xs={2}>
+                                  <Typography variant="body1">
+                                    <strong>Amount:</strong> {row.Amount}
+                                  </Typography>
+                                </Grid>
+                                <Grid item xs={12}>
+                                  <Button
+                                    variant="outlined"
+                                    color="primary"
+                                    onClick={() => handleUpdate(file, row)}
+                                  >
+                                    Edit
+                                  </Button>
+                                </Grid>
                               </Grid>
-                              <Grid item xs={2}>
-                                <Typography variant="body1">
-                                  <strong>Rate:</strong> {row.Rate}
-                                </Typography>
-                              </Grid>
-                              <Grid item xs={2}>
-                                <Typography variant="body1">
-                                  <strong>Amount:</strong> {row.Amount}
-                                </Typography>
-                              </Grid>
-                            </Grid>
-                          ))}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                            ))}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outlined"
+                              color="secondary"
+                              onClick={() => handleDelete(file.filename)}
+                            >
+                              Delete File
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
-
-            {/* Pagination */}
             <TablePagination
               rowsPerPageOptions={[5, 10, 25]}
               component="div"
               count={data.length}
               rowsPerPage={rowsPerPage}
               page={page}
-              onPageChange={handlePageChange}
-              onRowsPerPageChange={handleRowsPerPageChange}
+              onPageChange={(e, newPage) => setPage(newPage)}
+              onRowsPerPageChange={(e) =>
+                setRowsPerPage(parseInt(e.target.value, 10))
+              }
             />
           </Paper>
         )}
@@ -255,6 +324,57 @@ function App() {
             </IconButton>
           }
         />
+
+        {/* Edit Dialog */}
+        <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)}>
+          <DialogTitle>Edit Row</DialogTitle>
+          <DialogContent>
+            <TextField
+              label="SNo"
+              fullWidth
+              value={selectedRow?.SNo || ""}
+              onChange={(e) => handleChangeRow("SNo", e.target.value)}
+            />
+            <TextField
+              label="Material"
+              fullWidth
+              value={selectedRow?.Material || ""}
+              onChange={(e) => handleChangeRow("Material", e.target.value)}
+            />
+            <TextField
+              label="Unit"
+              fullWidth
+              value={selectedRow?.Unit || ""}
+              onChange={(e) => handleChangeRow("Unit", e.target.value)}
+            />
+            <TextField
+              label="Quantity"
+              fullWidth
+              value={selectedRow?.Quantity || ""}
+              onChange={(e) => handleChangeRow("Quantity", e.target.value)}
+            />
+            <TextField
+              label="Rate"
+              fullWidth
+              value={selectedRow?.Rate || ""}
+              onChange={(e) => handleChangeRow("Rate", e.target.value)}
+            />
+            <TextField
+              label="Amount"
+              fullWidth
+              value={selectedRow?.Amount || ""}
+              onChange={(e) => handleChangeRow("Amount", e.target.value)}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditDialogOpen(false)} color="primary">
+              Cancel
+            </Button>
+            <Button onClick={handleSaveUpdate} color="primary">
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </Container>
   );
