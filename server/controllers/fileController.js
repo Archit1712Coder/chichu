@@ -5,7 +5,17 @@ const FileData = require("../models/fileModel");
 const normalizeColumnName = (col) =>
   col.trim().toLowerCase().replace(/\s+/g, "");
 
-// Upload and normalize Excel data
+// Calculate percentage or number differences
+const calculateDifference = (newValue, oldValue) => {
+  const difference = newValue - oldValue;
+  const percentageChange = ((newValue - oldValue) / oldValue) * 100;
+  return {
+    difference,
+    percentageChange: isNaN(percentageChange) ? 0 : percentageChange.toFixed(2),
+  };
+};
+
+// Upload and update existing file data
 const uploadFile = async (req, res, next) => {
   try {
     const filename = req.file.originalname.split(".")[0];
@@ -41,32 +51,89 @@ const uploadFile = async (req, res, next) => {
       };
     });
 
-    await FileData.findOneAndUpdate(
-      { filename },
-      { filename, data: normalizedData, timestamp: Date.now() },
-      { upsert: true, new: true },
-    );
+    // Check if file already exists in the database
+    const existingFile = await FileData.findOne({ filename });
 
-    res.status(200).json({ message: "File data saved successfully!" });
+    if (existingFile) {
+      // Update existing file data with differences
+      existingFile.data = existingFile.data.map((existingRow) => {
+        const updatedRow = normalizedData.find(
+          (newRow) =>
+            newRow.Material === existingRow.Material &&
+            newRow.Unit === existingRow.Unit,
+        );
+
+        if (updatedRow) {
+          const { difference: quantityDiff, percentageChange: quantityChange } =
+            calculateDifference(updatedRow.Quantity, existingRow.Quantity);
+          const { difference: rateDiff, percentageChange: rateChange } =
+            calculateDifference(updatedRow.Rate, existingRow.Rate);
+          const { difference: amountDiff, percentageChange: amountChange } =
+            calculateDifference(updatedRow.Amount, existingRow.Amount);
+
+          // Log the differences
+          console.log(
+            `Updating ${existingRow.Material} - ${existingRow.Unit}:`,
+          );
+          console.log(
+            `Quantity: ${existingRow.Quantity} -> ${updatedRow.Quantity} (Difference: ${quantityDiff}, Change: ${quantityChange}%)`,
+          );
+          console.log(
+            `Rate: ${existingRow.Rate} -> ${updatedRow.Rate} (Difference: ${rateDiff}, Change: ${rateChange}%)`,
+          );
+          console.log(
+            `Amount: ${existingRow.Amount} -> ${updatedRow.Amount} (Difference: ${amountDiff}, Change: ${amountChange}%)`,
+          );
+
+          // Update the existing row with new values and differences
+          return {
+            ...existingRow,
+            Quantity: updatedRow.Quantity,
+            Rate: updatedRow.Rate,
+            Amount: updatedRow.Amount,
+            QuantityChange: quantityChange,
+            RateChange: rateChange,
+            AmountChange: amountChange,
+          };
+        }
+
+        return existingRow; // If no update for this material/unit, keep the existing row
+      });
+
+      await existingFile.save();
+      return res
+        .status(200)
+        .json({ message: "File data updated with changes!" });
+    } else {
+      // If no existing file, create a new document
+      const newFile = new FileData({
+        filename,
+        data: normalizedData,
+        timestamp: Date.now(),
+      });
+      await newFile.save();
+      return res.status(200).json({ message: "File uploaded successfully!" });
+    }
   } catch (err) {
-    console.error("Error saving data:", err);
+    console.error("Error saving or updating data:", err);
     next(err);
   }
 };
 
-// Retrieve data based on search
+// Define the getData function for fetching data from MongoDB
 const getData = async (req, res, next) => {
   try {
-    const { search = "" } = req.query;
+    const { search = "" } = req.query; // Get search query parameter
     const query = search.trim()
-      ? { filename: new RegExp(search.trim(), "i") }
+      ? { filename: new RegExp(search.trim(), "i") } // Search by filename (case-insensitive)
       : {};
 
-    const data = await FileData.find(query);
-    res.json(data);
+    const data = await FileData.find(query); // Fetch data from MongoDB
+
+    res.json(data); // Return the data to the frontend
   } catch (err) {
     console.error("Error retrieving data:", err);
-    next(err);
+    next(err); // Pass the error to the error handler
   }
 };
 
